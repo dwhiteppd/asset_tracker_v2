@@ -28,7 +28,16 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
 
-LOG_MODULE_REGISTER(MODULE, CONFIG_APPLICATION_MODULE_LOG_LEVEL);
+//////////////////////////////////////////////////////////
+// DEBUGGING - Devon White
+#define GNSS_OVERRIDE 1	// Disables GNSS
+#define ACEL_OVERRIDE 1	// Disables accelerometer
+#define MODM_OVERRIDE 1	// Disables modem
+#define SENS_OVERRIDE 1	// Disables sensors
+//////////////////////////////////////////////////////////
+
+// LOG_MODULE_REGISTER(MODULE, CONFIG_APPLICATION_MODULE_LOG_LEVEL);
+LOG_MODULE_REGISTER(MODULE, 4);
 
 /* Message structure. Events from other modules are converted to messages
  * in the Application Event Manager handler, and then queued up in the message queue
@@ -99,15 +108,20 @@ K_MSGQ_DEFINE(msgq_app, sizeof(struct app_msg_data), APP_QUEUE_ENTRY_COUNT,
 /* Data sample timer used in active mode. */
 K_TIMER_DEFINE(data_sample_timer, data_sample_timer_handler, NULL);
 
-/* Movement timer used to detect movement timeouts in passive mode. */
-K_TIMER_DEFINE(movement_timeout_timer, data_sample_timer_handler, NULL);
+#if !ACEL_OVERRIDE
+{
+	#define MOVEMENT_TIMER
+	/* Movement timer used to detect movement timeouts in passive mode. */
+	K_TIMER_DEFINE(movement_timeout_timer, data_sample_timer_handler, NULL);
 
-/* Movement resolution timer decides the period after movement that consecutive
- * movements are ignored and do not cause data collection. This is used to
- * lower power consumption by limiting how often GNSS search is performed and
- * data is sent on air.
- */
-K_TIMER_DEFINE(movement_resolution_timer, NULL, NULL);
+	/* Movement resolution timer decides the period after movement that consecutive
+	* movements are ignored and do not cause data collection. This is used to
+	* lower power consumption by limiting how often GNSS search is performed and
+	* data is sent on air.
+	*/
+	K_TIMER_DEFINE(movement_resolution_timer, NULL, NULL);
+}
+#endif
 
 /* Module data structure to hold information of the application module, which
  * opens up for using convenience functions available for modules.
@@ -255,13 +269,14 @@ static bool app_event_handler(const struct app_event_header *aeh)
 		msg.module.data = *evt;
 		enqueue_msg = true;
 	}
-
+#if !SENS_OVERRIDE
 	if (is_sensor_module_event(aeh)) {
 		struct sensor_module_event *evt = cast_sensor_module_event(aeh);
 
 		msg.module.sensor = *evt;
 		enqueue_msg = true;
 	}
+#endif
 
 	if (is_util_module_event(aeh)) {
 		struct util_module_event *evt = cast_util_module_event(aeh);
@@ -321,6 +336,7 @@ static void passive_mode_timers_start_all(void)
 		      K_SECONDS(app_cfg.movement_resolution),
 		      K_SECONDS(app_cfg.movement_resolution));
 
+#ifdef MOVEMENT_TIMER																// MOVEMENT TIMER
 	k_timer_start(&movement_resolution_timer,
 		      K_SECONDS(app_cfg.movement_resolution),
 		      K_SECONDS(0));
@@ -328,6 +344,7 @@ static void passive_mode_timers_start_all(void)
 	k_timer_start(&movement_timeout_timer,
 		      K_SECONDS(app_cfg.movement_timeout),
 		      K_SECONDS(app_cfg.movement_timeout));
+#endif
 }
 
 static void active_mode_timers_start_all(void)
@@ -339,15 +356,18 @@ static void active_mode_timers_start_all(void)
 		      K_SECONDS(app_cfg.active_wait_timeout),
 		      K_SECONDS(app_cfg.active_wait_timeout));
 
+#ifdef MOVEMENT_TIMER
 	k_timer_stop(&movement_resolution_timer);
 	k_timer_stop(&movement_timeout_timer);
+#endif
 }
 
+#if !ACEL_OVERRIDE
 static void activity_event_handle(enum sensor_module_event_type sensor_event)
 {
 	__ASSERT(((sensor_event == SENSOR_EVT_MOVEMENT_ACTIVITY_DETECTED) ||
-		  (sensor_event == SENSOR_EVT_MOVEMENT_INACTIVITY_DETECTED)),
-		  "Unknown event");
+		(sensor_event == SENSOR_EVT_MOVEMENT_INACTIVITY_DETECTED)),
+		"Unknown event");
 
 	activity = (sensor_event == SENSOR_EVT_MOVEMENT_ACTIVITY_DETECTED) ? true : false;
 
@@ -357,7 +377,7 @@ static void activity_event_handle(enum sensor_module_event_type sensor_event)
 	}
 
 	if ((sensor_event == SENSOR_EVT_MOVEMENT_ACTIVITY_DETECTED) &&
-	    (k_timer_remaining_get(&movement_resolution_timer) != 0)) {
+			(k_timer_remaining_get(&movement_resolution_timer) != 0)) {
 		LOG_DBG("Movement resolution timer has not expired, abort request.");
 		return;
 	}
@@ -365,6 +385,7 @@ static void activity_event_handle(enum sensor_module_event_type sensor_event)
 	SEND_EVENT(app, APP_EVT_DATA_GET_ALL);
 	passive_mode_timers_start_all();
 }
+#endif
 
 static void data_get(void)
 {
@@ -385,29 +406,36 @@ static void data_get(void)
 		app_module_event->data_list[count++] = APP_DATA_MODEM_STATIC;
 	}
 
+#if !SENS_OVERRIDE
 	if (IS_ENABLED(CONFIG_SENSOR_MODULE)) {
 		app_module_event->data_list[count++] = APP_DATA_BATTERY;
 		app_module_event->data_list[count++] = APP_DATA_ENVIRONMENTAL;
 	}
+#endif
 
+/////////////////////////////////////////////////////////////////////////////////////////////////
+#if !GNSS_OVERRIDE
 	if (IS_ENABLED(CONFIG_LOCATION_MODULE) &&
-	    (!app_cfg.no_data.neighbor_cell || !app_cfg.no_data.gnss || !app_cfg.no_data.wifi)) {
+			(!app_cfg.no_data.neighbor_cell || !app_cfg.no_data.gnss || !app_cfg.no_data.wifi)) {
 		app_module_event->data_list[count++] = APP_DATA_LOCATION;
 
 		/* Set application module timeout when location sampling is requested.
-		 * This is selected to be long enough so that most of the GNSS would
-		 * have enough time to run to get a fix. We also want it to be smaller than
-		 * the sampling interval (120s). So, 110s was selected but we take
-		 * minimum of sampling interval minus 5 (just some selected number) and 110.
-		 * And mode (active or passive) is taken into account.
-		 * If the timeout would become smaller than 5s, we want to ensure some time for
-		 * the modules so the minimum value for application module timeout is 5s.
-		 */
+		* This is selected to be long enough so that most of the GNSS would
+		* have enough time to run to get a fix. We also want it to be smaller than
+		* the sampling interval (120s). So, 110s was selected but we take
+		* minimum of sampling interval minus 5 (just some selected number) and 110.
+		* And mode (active or passive) is taken into account.
+		* If the timeout would become smaller than 5s, we want to ensure some time for
+		* the modules so the minimum value for application module timeout is 5s.
+		*/
 		app_module_event->timeout = (app_cfg.active_mode) ?
 			MIN(app_cfg.active_wait_timeout - 5, 110) :
 			MIN(app_cfg.movement_resolution - 5, 110);
 		app_module_event->timeout = MAX(app_module_event->timeout, 5);
 	}
+#endif
+	/////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 	/* Set list count to number of data types passed in app_module_event. */
 	app_module_event->count = count;
@@ -470,10 +498,16 @@ void on_sub_state_passive(struct app_msg_data *msg)
 		passive_mode_timers_start_all();
 	}
 
+
+	/////////////////////////////////////////////////////////////////////////////////////////////////
+#if !ACEL_OVERRIDE
 	if ((IS_EVENT(msg, sensor, SENSOR_EVT_MOVEMENT_ACTIVITY_DETECTED)) ||
-	    (IS_EVENT(msg, sensor, SENSOR_EVT_MOVEMENT_INACTIVITY_DETECTED))) {
+			(IS_EVENT(msg, sensor, SENSOR_EVT_MOVEMENT_INACTIVITY_DETECTED))) {
 		activity_event_handle(msg->module.sensor.type);
 	}
+#endif
+	/////////////////////////////////////////////////////////////////////////////////////////////////
+	
 }
 
 /* Message handler for SUB_STATE_ACTIVE_MODE. */
@@ -498,8 +532,10 @@ static void on_all_events(struct app_msg_data *msg)
 {
 	if (IS_EVENT(msg, util, UTIL_EVT_SHUTDOWN_REQUEST)) {
 		k_timer_stop(&data_sample_timer);
+#if !ACEL_OVERRIDE
 		k_timer_stop(&movement_timeout_timer);
 		k_timer_stop(&movement_resolution_timer);
+#endif
 
 		SEND_SHUTDOWN_ACK(app, APP_EVT_SHUTDOWN_READY, self.id);
 		state_set(STATE_SHUTDOWN);
@@ -517,13 +553,25 @@ static void on_all_events(struct app_msg_data *msg)
 		sample_request_ongoing = false;
 	}
 
+	/////////////////////////////////////////////////////////////////////////////////////////////////
+#if !ACEL_OVERRIDE
 	if (IS_EVENT(msg, sensor, SENSOR_EVT_MOVEMENT_IMPACT_DETECTED)) {
 		SEND_EVENT(app, APP_EVT_DATA_GET_ALL);
 	}
+#endif
+	
+	/////////////////////////////////////////////////////////////////////////////////////////////////
 }
 
 int main(void)
 {
+	///////////////////////////////////////////////////////////////////////
+	// Disabling certain features to reduce power consumption - Devon White
+	if (GNSS_OVERRIDE) LOG_WRN("GNSS DISABLED");
+	if (ACEL_OVERRIDE) LOG_WRN("ACCELEROMETER DISABLED");
+	if (MODM_OVERRIDE) LOG_WRN("MODEM DISABLED");
+	///////////////////////////////////////////////////////////////////////
+
 	int err;
 	struct app_msg_data msg = { 0 };
 
@@ -538,8 +586,8 @@ int main(void)
 		module_set_state(MODULE_STATE_READY);
 		SEND_EVENT(app, APP_EVT_START);
 
-#if defined(CONFIG_NRF_MODEM_LIB)
-		modem_init();
+#if defined(CONFIG_NRF_MODEM_LIB) 
+		if (!MODM_OVERRIDE) modem_init();
 #endif
 	}
 
@@ -591,5 +639,7 @@ APP_EVENT_SUBSCRIBE_EARLY(MODULE, cloud_module_event);
 APP_EVENT_SUBSCRIBE(MODULE, app_module_event);
 APP_EVENT_SUBSCRIBE(MODULE, data_module_event);
 APP_EVENT_SUBSCRIBE(MODULE, util_module_event);
+#if !ACEL_OVERRIDE
 APP_EVENT_SUBSCRIBE_FINAL(MODULE, sensor_module_event);
+#endif
 APP_EVENT_SUBSCRIBE_FINAL(MODULE, modem_module_event);
