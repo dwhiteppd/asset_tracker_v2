@@ -28,13 +28,10 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
 
-//////////////////////////////////////////////////////////
+//////////////////////////
 // DEBUGGING - Devon White
-#define GNSS_OVERRIDE 1	// Disables GNSS
-#define ACEL_OVERRIDE 1	// Disables accelerometer
-#define MODM_OVERRIDE 1	// Disables modem
-#define SENS_OVERRIDE 1	// Disables sensors
-//////////////////////////////////////////////////////////
+#include "overrides.h"
+//////////////////////////
 
 // LOG_MODULE_REGISTER(MODULE, CONFIG_APPLICATION_MODULE_LOG_LEVEL);
 LOG_MODULE_REGISTER(MODULE, 4);
@@ -108,7 +105,7 @@ K_MSGQ_DEFINE(msgq_app, sizeof(struct app_msg_data), APP_QUEUE_ENTRY_COUNT,
 /* Data sample timer used in active mode. */
 K_TIMER_DEFINE(data_sample_timer, data_sample_timer_handler, NULL);
 
-#if !ACEL_OVERRIDE
+#if !SENS_OVERRIDE
 {
 	#define MOVEMENT_TIMER
 	/* Movement timer used to detect movement timeouts in passive mode. */
@@ -362,7 +359,7 @@ static void active_mode_timers_start_all(void)
 #endif
 }
 
-#if !ACEL_OVERRIDE
+#if !SENS_OVERRIDE
 static void activity_event_handle(enum sensor_module_event_type sensor_event)
 {
 	__ASSERT(((sensor_event == SENSOR_EVT_MOVEMENT_ACTIVITY_DETECTED) ||
@@ -500,7 +497,7 @@ void on_sub_state_passive(struct app_msg_data *msg)
 
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////
-#if !ACEL_OVERRIDE
+#if !SENS_OVERRIDE
 	if ((IS_EVENT(msg, sensor, SENSOR_EVT_MOVEMENT_ACTIVITY_DETECTED)) ||
 			(IS_EVENT(msg, sensor, SENSOR_EVT_MOVEMENT_INACTIVITY_DETECTED))) {
 		activity_event_handle(msg->module.sensor.type);
@@ -532,7 +529,7 @@ static void on_all_events(struct app_msg_data *msg)
 {
 	if (IS_EVENT(msg, util, UTIL_EVT_SHUTDOWN_REQUEST)) {
 		k_timer_stop(&data_sample_timer);
-#if !ACEL_OVERRIDE
+#if !SENS_OVERRIDE
 		k_timer_stop(&movement_timeout_timer);
 		k_timer_stop(&movement_resolution_timer);
 #endif
@@ -554,7 +551,7 @@ static void on_all_events(struct app_msg_data *msg)
 	}
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////
-#if !ACEL_OVERRIDE
+#if !SENS_OVERRIDE
 	if (IS_EVENT(msg, sensor, SENSOR_EVT_MOVEMENT_IMPACT_DETECTED)) {
 		SEND_EVENT(app, APP_EVT_DATA_GET_ALL);
 	}
@@ -568,7 +565,7 @@ int main(void)
 	///////////////////////////////////////////////////////////////////////
 	// Disabling certain features to reduce power consumption - Devon White
 	if (GNSS_OVERRIDE) LOG_WRN("GNSS DISABLED");
-	if (ACEL_OVERRIDE) LOG_WRN("ACCELEROMETER DISABLED");
+	if (SENS_OVERRIDE) LOG_WRN("SENSORS & ACCELEROMETER DISABLED");
 	if (MODM_OVERRIDE) LOG_WRN("MODEM DISABLED");
 	///////////////////////////////////////////////////////////////////////
 
@@ -639,7 +636,9 @@ APP_EVENT_SUBSCRIBE_EARLY(MODULE, cloud_module_event);
 APP_EVENT_SUBSCRIBE(MODULE, app_module_event);
 APP_EVENT_SUBSCRIBE(MODULE, data_module_event);
 APP_EVENT_SUBSCRIBE(MODULE, util_module_event);
-#if !ACEL_OVERRIDE
+#if !SENS_OVERRIDE
 APP_EVENT_SUBSCRIBE_FINAL(MODULE, sensor_module_event);
 #endif
+#if !MODM_OVERRIDE
 APP_EVENT_SUBSCRIBE_FINAL(MODULE, modem_module_event);
+#endif

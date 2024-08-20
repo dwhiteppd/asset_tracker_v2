@@ -13,6 +13,10 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(led, CONFIG_LED_CONTROL_LOG_LEVEL);
 
+//////////////////////////
+// DEBUGGING - Devon White
+#include "overrides.h"
+//////////////////////////
 
 static void send_led_event(size_t led_id, const struct led_effect *led_effect)
 {
@@ -129,5 +133,7 @@ static bool app_event_handler(const struct app_event_header *aeh)
 	return false;
 }
 
-//APP_EVENT_LISTENER(MODULE, app_event_handler);	// Devon White
-//APP_EVENT_SUBSCRIBE(MODULE, led_state_event);		// Devon White
+#if !LEDS_OVERRIDE
+APP_EVENT_LISTENER(MODULE, app_event_handler);	// Devon White
+APP_EVENT_SUBSCRIBE(MODULE, led_state_event);		// Devon White
+#endif
