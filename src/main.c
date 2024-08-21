@@ -105,7 +105,7 @@ K_MSGQ_DEFINE(msgq_app, sizeof(struct app_msg_data), APP_QUEUE_ENTRY_COUNT,
 /* Data sample timer used in active mode. */
 K_TIMER_DEFINE(data_sample_timer, data_sample_timer_handler, NULL);
 
-#if !SENS_OVERRIDE
+#if SENS_ENABLE
 #define MOVEMENT_TIMER
 /* Movement timer used to detect movement timeouts in passive mode. */
 K_TIMER_DEFINE(movement_timeout_timer, data_sample_timer_handler, NULL);
@@ -264,7 +264,7 @@ static bool app_event_handler(const struct app_event_header *aeh)
 		msg.module.data = *evt;
 		enqueue_msg = true;
 	}
-#if !SENS_OVERRIDE
+#if SENS_ENABLE
 	if (is_sensor_module_event(aeh)) {
 		struct sensor_module_event *evt = cast_sensor_module_event(aeh);
 
@@ -357,7 +357,7 @@ static void active_mode_timers_start_all(void)
 #endif
 }
 
-#if !SENS_OVERRIDE
+#if SENS_ENABLE
 static void activity_event_handle(enum sensor_module_event_type sensor_event)
 {
 	__ASSERT(((sensor_event == SENSOR_EVT_MOVEMENT_ACTIVITY_DETECTED) ||
@@ -401,7 +401,7 @@ static void data_get(void)
 		app_module_event->data_list[count++] = APP_DATA_MODEM_STATIC;
 	}
 
-#if !SENS_OVERRIDE
+#if SENS_ENABLE
 	if (IS_ENABLED(CONFIG_SENSOR_MODULE)) {
 		app_module_event->data_list[count++] = APP_DATA_BATTERY;
 		app_module_event->data_list[count++] = APP_DATA_ENVIRONMENTAL;
@@ -409,7 +409,7 @@ static void data_get(void)
 #endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-#if !GNSS_OVERRIDE
+#if GNSS_ENABLE
 	if (IS_ENABLED(CONFIG_LOCATION_MODULE) &&
 			(!app_cfg.no_data.neighbor_cell || !app_cfg.no_data.gnss || !app_cfg.no_data.wifi)) {
 		app_module_event->data_list[count++] = APP_DATA_LOCATION;
@@ -495,7 +495,7 @@ void on_sub_state_passive(struct app_msg_data *msg)
 
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////
-#if !SENS_OVERRIDE
+#if SENS_ENABLE
 	if ((IS_EVENT(msg, sensor, SENSOR_EVT_MOVEMENT_ACTIVITY_DETECTED)) ||
 			(IS_EVENT(msg, sensor, SENSOR_EVT_MOVEMENT_INACTIVITY_DETECTED))) {
 		activity_event_handle(msg->module.sensor.type);
@@ -527,7 +527,7 @@ static void on_all_events(struct app_msg_data *msg)
 {
 	if (IS_EVENT(msg, util, UTIL_EVT_SHUTDOWN_REQUEST)) {
 		k_timer_stop(&data_sample_timer);
-#if !SENS_OVERRIDE
+#if SENS_ENABLE
 		k_timer_stop(&movement_timeout_timer);
 		k_timer_stop(&movement_resolution_timer);
 #endif
@@ -549,7 +549,7 @@ static void on_all_events(struct app_msg_data *msg)
 	}
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////
-#if !SENS_OVERRIDE
+#if SENS_ENABLE
 	if (IS_EVENT(msg, sensor, SENSOR_EVT_MOVEMENT_IMPACT_DETECTED)) {
 		SEND_EVENT(app, APP_EVT_DATA_GET_ALL);
 	}
@@ -562,9 +562,9 @@ int main(void)
 {
 	///////////////////////////////////////////////////////////////////////
 	// Disabling certain features to reduce power consumption - Devon White
-	if (GNSS_OVERRIDE) LOG_WRN("GNSS DISABLED");
-	if (SENS_OVERRIDE) LOG_WRN("SENSORS & ACCELEROMETER DISABLED");
-	if (MODM_OVERRIDE) LOG_WRN("MODEM DISABLED");
+	if (!GNSS_ENABLE) LOG_WRN("GNSS DISABLED");
+	if (!SENS_ENABLE) LOG_WRN("SENSORS & ACCELEROMETER DISABLED");
+	if (!MODM_ENABLE) LOG_WRN("MODEM DISABLED");
 	///////////////////////////////////////////////////////////////////////
 
 	int err;
@@ -582,7 +582,7 @@ int main(void)
 		SEND_EVENT(app, APP_EVT_START);
 
 #if defined(CONFIG_NRF_MODEM_LIB) 
-		if (!MODM_OVERRIDE) modem_init();
+		if (MODM_ENABLE) modem_init();
 #endif
 	}
 
@@ -634,9 +634,9 @@ APP_EVENT_SUBSCRIBE_EARLY(MODULE, cloud_module_event);
 APP_EVENT_SUBSCRIBE(MODULE, app_module_event);
 APP_EVENT_SUBSCRIBE(MODULE, data_module_event);
 APP_EVENT_SUBSCRIBE(MODULE, util_module_event);
-#if !SENS_OVERRIDE
+#if SENS_ENABLE
 APP_EVENT_SUBSCRIBE_FINAL(MODULE, sensor_module_event);
 #endif
-#if !MODM_OVERRIDE
+#if MODM_ENABLE
 APP_EVENT_SUBSCRIBE_FINAL(MODULE, modem_module_event);
 #endif
