@@ -106,18 +106,16 @@ K_MSGQ_DEFINE(msgq_app, sizeof(struct app_msg_data), APP_QUEUE_ENTRY_COUNT,
 K_TIMER_DEFINE(data_sample_timer, data_sample_timer_handler, NULL);
 
 #if !SENS_OVERRIDE
-{
-	#define MOVEMENT_TIMER
-	/* Movement timer used to detect movement timeouts in passive mode. */
-	K_TIMER_DEFINE(movement_timeout_timer, data_sample_timer_handler, NULL);
+#define MOVEMENT_TIMER
+/* Movement timer used to detect movement timeouts in passive mode. */
+K_TIMER_DEFINE(movement_timeout_timer, data_sample_timer_handler, NULL);
 
-	/* Movement resolution timer decides the period after movement that consecutive
-	* movements are ignored and do not cause data collection. This is used to
-	* lower power consumption by limiting how often GNSS search is performed and
-	* data is sent on air.
-	*/
-	K_TIMER_DEFINE(movement_resolution_timer, NULL, NULL);
-}
+/* Movement resolution timer decides the period after movement that consecutive
+* movements are ignored and do not cause data collection. This is used to
+* lower power consumption by limiting how often GNSS search is performed and
+* data is sent on air.
+*/
+K_TIMER_DEFINE(movement_resolution_timer, NULL, NULL);
 #endif
 
 /* Module data structure to hold information of the application module, which

@@ -3,9 +3,9 @@
 
 #ifndef OVERRIDES_H_
 
-#define GNSS_OVERRIDE 1	// Disables GNSS
-#define MODM_OVERRIDE 1	// Disables modem
-#define SENS_OVERRIDE 1	// Disables sensors (includes accelerometer)
-#define LEDS_OVERRIDE 1 // Disables LEDS
+#define GNSS_OVERRIDE 0	// Disables GNSS
+#define MODM_OVERRIDE 0	// Disables modem
+#define SENS_OVERRIDE 0	// Disables sensors (includes accelerometer)
+#define LEDS_OVERRIDE 0 // Disables LEDS
 
 #endif  // OVERRIDES_H_
